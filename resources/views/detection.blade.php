@@ -254,6 +254,7 @@
         resultText.className = "text-6xl font-extrabold tracking-tighter text-white transition-all scale-100 duration-200";
     }
 
+    // Video loading
     video.onloadeddata = () => detect();
 </script>
 </body>
