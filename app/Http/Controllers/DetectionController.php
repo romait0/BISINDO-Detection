@@ -20,7 +20,7 @@ class DetectionController extends Controller
         }
 
         $imageFile = $request->file('image');
-        $apiKey = env('ROBOFLOW_API_KEY', 'DzRnqXzja80fBxFOSRju'); 
+        $apiKey = env('ROBOFLOW_API_KEY', 'rU79lhor7q1XOzJdVIQ6'); 
 
         try {
             // Konversi file gambar ke format biner untuk payload multipart data
@@ -33,7 +33,7 @@ class DetectionController extends Controller
                     'Content-Type' => 'application/x-www-form-urlencoded'
                 ])
                 ->withBody(base64_encode($imageBinary), 'text/plain')
-                ->post("https://detect.roboflow.com/ruangisyarat-vsupz/4?api_key={$apiKey}");
+                ->post("https://detect.roboflow.com/ruangisyarat-lgifr/4?api_key={$apiKey}");
 
             if ($response->failed()) {
                 return response()->json([
