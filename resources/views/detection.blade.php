@@ -46,6 +46,7 @@
 
     <main class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow overflow-hidden items-stretch mb-4">
         
+        <!-- Video Stream Box -->
         <div class="lg:col-span-8 flex flex-col gap-4 overflow-hidden">
             <div class="video-container bg-slate-950 relative overflow-hidden">
                 <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
@@ -62,6 +63,7 @@
             </div>
         </div>
 
+        <!-- Sidebar Info & Result -->
         <div class="lg:col-span-4 flex flex-col gap-4 overflow-hidden">
             <div class="glass w-full p-6 border-t-2 border-sky-500/20 shrink-0 shadow-xl">
                 <div class="flex justify-between items-center mb-4">
@@ -119,7 +121,7 @@
     
     let isProcessing = false, wordBuffer = []; 
 
-    // ⚙️ KONFIGURASI FILTER ANTI-FALSE POSITIVE
+    // KONFIGURASI FILTER ANTI-FALSE POSITIVE
     const CONFIDENCE_THRESHOLD = 0.70; // Batas akurasi minimal (70%)
     const REQUIRED_STABLE_FRAMES = 3;   // Harus konsisten selama 3 frame berurutan
     
@@ -217,7 +219,7 @@
                             }
                             
                             if (stableFrameCount === REQUIRED_STABLE_FRAMES) {
-                                if (wordBuffer[wordBuffer.length - 1] !== currentClass) {
+                                if (wordBuffer[wordBuffer.length - 1] !== currentClass || wordBuffer[wordBuffer.length - 1] == currentClass) {
                                     const isWord = currentClass.length > 1;
                                     if (wordBuffer.length > 0 && (isWord || wordBuffer[wordBuffer.length - 1].length > 1)) {
                                         wordBuffer.push(" "); 
@@ -254,7 +256,6 @@
         resultText.className = "text-6xl font-extrabold tracking-tighter text-white transition-all scale-100 duration-200";
     }
 
-    // Video loading
     video.onloadeddata = () => detect();
 </script>
 </body>
