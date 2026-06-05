@@ -13,7 +13,7 @@
         .glass { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 28px; }
         .gradient-text { background: linear-gradient(135deg, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .video-container { position: relative; border-radius: 32px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.1); height: 100%; }
-        .corner { position: absolute; width: 30px; height: 30px; border: 4px solid #38bdf8; z-index: 10; opacity: 0.6; }
+        .corner { position: absolute; width: 30px; height: 30px; border: 4px solid #38bdf8; z-index: 30; opacity: 0.6; }
         .tl { top: 20px; left: 20px; border-right: 0; border-bottom: 0; border-radius: 12px 0 0 0; }
         .tr { top: 20px; right: 20px; border-left: 0; border-bottom: 0; border-radius: 0 12px 0 0; }
         .bl { bottom: 20px; left: 20px; border-right: 0; border-top: 0; border-radius: 0 0 0 12px; }
@@ -46,12 +46,12 @@
 
     <main class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow overflow-hidden items-stretch mb-4">
         
-        <!-- Video Stream Box -->
         <div class="lg:col-span-8 flex flex-col gap-4 overflow-hidden">
             <div class="video-container bg-slate-950 relative overflow-hidden">
                 <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
-                <video id="video" autoplay playsinline class="w-full h-full object-cover scale-x-[-1]"></video>
-                <div class="absolute bottom-6 left-6 glass px-4 py-1.5 text-[10px] font-bold text-slate-400 tracking-wider">
+                <video id="video" autoplay playsinline class="w-full h-full object-cover scale-x-[-1] z-0 absolute inset-0"></video>
+                <canvas id="overlay-canvas" class="w-full h-full absolute inset-0 z-20 pointer-events-none"></canvas>
+                <div class="absolute bottom-6 left-6 glass px-4 py-1.5 text-[10px] font-bold text-slate-400 tracking-wider z-30">
                     YOLOv11 <span class="text-sky-400">Analysis Active</span>
                 </div>
             </div>
@@ -63,7 +63,6 @@
             </div>
         </div>
 
-        <!-- Sidebar Info & Result -->
         <div class="lg:col-span-4 flex flex-col gap-4 overflow-hidden">
             <div class="glass w-full p-6 border-t-2 border-sky-500/20 shrink-0 shadow-xl">
                 <div class="flex justify-between items-center mb-4">
@@ -109,9 +108,12 @@
     </main>
 
 <script>
+    // DOM Elements
     const video = document.getElementById("video"), 
           canvas = document.createElement("canvas"), 
           ctx = canvas.getContext("2d"), 
+          overlayCanvas = document.getElementById("overlay-canvas"),
+          overlayCtx = overlayCanvas.getContext("2d"),
           resultText = document.getElementById("result"), 
           wordDisplay = document.getElementById("word-memory"), 
           fpsVal = document.getElementById("fps-val"), 
@@ -119,21 +121,19 @@
           statusBadge = document.getElementById("status-badge"),
           csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     
+    // Core state
     let isProcessing = false, wordBuffer = []; 
-
-    // KONFIGURASI FILTER ANTI-FALSE POSITIVE
-    const CONFIDENCE_THRESHOLD = 0.70; // Batas akurasi minimal (70%)
-    const REQUIRED_STABLE_FRAMES = 3;   // Harus konsisten selama 3 frame berurutan
-    
+    const CONFIDENCE_THRESHOLD = 0.70; 
+    const REQUIRED_STABLE_FRAMES = 3;   
     let activeCandidate = null;        
-    let stableFrameCount = 0;           
+    let stableFrameCount = 0;            
 
-    // Ambil Stream Video Kamera Laptop/Webcam
+    // Init camera stream
     navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
         .then(s => { video.srcObject = s; debugLog.innerText = "Camera active. Awaiting gesture..."; })
         .catch(e => { debugLog.innerText = "Camera Error: " + e.message; statusBadge.innerText = "ERROR"; statusBadge.className = "text-red-400"; });
 
-    // Fitur Suara Text-To-Speech (Bahasa Indonesia)
+    // Text-To-Speech (id-ID)
     function speakWord() {
         const fullWord = wordBuffer.join("");
         if (!fullWord) return;
@@ -143,7 +143,7 @@
         window.speechSynthesis.speak(msg);
     }
 
-    // Mengosongkan Susunan Kalimat
+    // Reset buffer & UI
     function clearMemory() {
         wordBuffer = []; 
         wordDisplay.innerText = "..."; 
@@ -151,25 +151,30 @@
         activeCandidate = null;
         stableFrameCount = 0;
         debugLog.innerText = "Memory cleared.";
+        clearOverlay();
     }
 
-    // Engine Core Deteksi Real-Time Loop
+    // Clear bounding box canvas
+    function clearOverlay() {
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+    }
+
+    // Real-Time detection loop
     async function detect() {
         if (isProcessing || video.videoWidth === 0) { setTimeout(detect, 200); return; }
         isProcessing = true; 
         const start = Date.now();
         
-        // Setup dimensi frame inferensi YOLOv11 terbaik (416x416) demi performa jaringan yang cepat
+        // 416x416 for YOLO inference
         canvas.width = 416; 
         canvas.height = 416;
 
-        // Efek mirroring spasial natural
+        // Spatial mirroring for natural interaction
         ctx.translate(416, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, 416, 416);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        // Konversi tangkapan layar menjadi berkas Blob Biner Murni (Bukan Base64 String)
         canvas.toBlob(async (blob) => {
             if (!blob) { isProcessing = false; setTimeout(detect, 200); return; }
 
@@ -179,9 +184,7 @@
             try {
                 const res = await fetch("/detect", {
                     method: "POST",
-                    headers: { 
-                        "X-CSRF-TOKEN": csrfToken 
-                    },
+                    headers: { "X-CSRF-TOKEN": csrfToken },
                     body: formData
                 });
                 
@@ -192,25 +195,52 @@
                     statusBadge.innerText = "API ERROR";
                     statusBadge.className = "text-red-400";
                     resetTracker();
+                    clearOverlay();
                 } else {
                     statusBadge.innerText = "CONNECTED";
                     statusBadge.className = "text-emerald-400";
                     
-                    // Pembacaan data array prediksi dari model Object Detection baru
                     if (data.predictions && data.predictions.length > 0) {
                         const p = data.predictions[0];
-                        
-                        // Menangkap parameter deteksi standar YOLO baru
                         const currentClass = p.class;
                         const currentConfidence = p.confidence;
                         
                         debugLog.innerText = `Target: ${currentClass} (${(currentConfidence * 100).toFixed(0)}%)`;
                         
+                        // Sync overlay canvas dimensions to video element layout
+                        overlayCanvas.width = video.clientWidth;
+                        overlayCanvas.height = video.clientHeight;
+                        clearOverlay();
+
                         if (currentConfidence >= CONFIDENCE_THRESHOLD) {
+                            
+                            // CALCULATE SCALING FOR BOUNDING BOX
+                            // Map YOLO's 416x416 coordinates to current UI canvas dimensions
+                            const scaleX = overlayCanvas.width / 416;
+                            const scaleY = overlayCanvas.height / 416;
+
+                            const boxWidth = p.width * scaleX;
+                            const boxHeight = p.height * scaleY;
+                            const boxX = (p.x * scaleX) - (boxWidth / 2);
+                            const boxY = (p.y * scaleY) - (boxHeight / 2);
+
+                            // DRAW BOUNDING BOX
+                            overlayCtx.strokeStyle = "#38bdf8"; 
+                            overlayCtx.lineWidth = 3;
+                            overlayCtx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+
+                            // DRAW LABEL TEXT
+                            overlayCtx.fillStyle = "#38bdf8";
+                            overlayCtx.font = "bold 14px 'Plus Jakarta Sans', sans-serif";
+                            const labelText = `${currentClass} ${(currentConfidence * 100).toFixed(0)}%`;
+                            // Offset text to stay within view
+                            overlayCtx.fillText(labelText, boxX, boxY > 20 ? boxY - 8 : boxY + 24);
+
+                            // Update text UI
                             resultText.innerText = currentClass;
                             resultText.className = "text-6xl font-extrabold tracking-tighter text-sky-400 transition-all scale-105 duration-200";
                             
-                            // Algoritma Penahan Stabilitas Input Isyarat Jari
+                            // Gesture stability logic
                             if (currentClass === activeCandidate) {
                                 stableFrameCount++;
                             } else {
@@ -230,9 +260,11 @@
                             }
                         } else {
                             resetTracker();
+                            clearOverlay();
                         }
                     } else {
                         resetTracker();
+                        clearOverlay();
                         debugLog.innerText = "Streaming clear. No signs detected.";
                     }
                 }
@@ -241,11 +273,12 @@
                 statusBadge.innerText = "DISCONNECTED";
                 statusBadge.className = "text-amber-400";
                 resetTracker();
+                clearOverlay();
             }
             
             fpsVal.innerText = Math.round(1000 / (Date.now() - start));
             isProcessing = false; 
-            setTimeout(detect, 200); // Trigger frame berikutnya
+            setTimeout(detect, 200); 
         }, "image/jpeg", 0.7);
     }
 
